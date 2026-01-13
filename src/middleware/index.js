@@ -3,6 +3,8 @@ const { authorize, isAdmin, isStaff, isOwnerOrAdmin, canAccessCustomerData, ROLE
 const { validate, schemas } = require('./validate');
 const { errorHandler, notFound, asyncHandler, AppError } = require('./error');
 const upload = require('./upload');
+const sanitize = require('./sanitize');
+const { issueCsrfToken, csrfProtect, CSRF_COOKIE, CSRF_HEADER } = require('./csrf');
 
 module.exports = {
   // Auth
@@ -20,6 +22,11 @@ module.exports = {
   // Validation
   validate,
   schemas,
+  sanitize,
+  issueCsrfToken,
+  csrfProtect,
+  CSRF_COOKIE,
+  CSRF_HEADER,
   
   // Error handling
   errorHandler,

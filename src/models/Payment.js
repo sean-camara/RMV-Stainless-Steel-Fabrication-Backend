@@ -123,6 +123,9 @@ paymentSchema.index({ customer: 1 });
 paymentSchema.index({ status: 1 });
 paymentSchema.index({ isDeleted: 1 });
 
+// Compound index for common query patterns
+paymentSchema.index({ project: 1, stage: 1, status: 1 });
+
 // Virtual for payment completion percentage
 paymentSchema.virtual('completionPercentage').get(function () {
   if (!this.amount.expected || !this.amount.received) return 0;

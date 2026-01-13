@@ -233,6 +233,9 @@ const login = asyncHandler(async (req, res) => {
   user.lastLogin = new Date();
   await user.save();
 
+  // Cleanup old refresh tokens to cap size and age
+  await tokenService.cleanupExpiredTokens(user._id);
+
   // Log activity
   await activityService.logAuth(user._id, user.role, 'login', {
     ipAddress: req.ip,

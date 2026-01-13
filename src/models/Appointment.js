@@ -102,6 +102,34 @@ const appointmentSchema = new mongoose.Schema(
       default: false,
     },
     deletedAt: Date,
+
+    // Travel fee for ocular visits (outside Metro Manila)
+    travelFee: {
+      isRequired: {
+        type: Boolean,
+        default: false,
+      },
+      amount: {
+        type: Number,
+        default: 0,
+      },
+      status: {
+        type: String,
+        enum: ['not_required', 'pending', 'collected', 'verified'],
+        default: 'not_required',
+      },
+      collectedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
+      collectedAt: Date,
+      verifiedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
+      verifiedAt: Date,
+      notes: String,
+    },
   },
   {
     timestamps: true,
@@ -115,6 +143,9 @@ appointmentSchema.index({ scheduledDate: 1, assignedSalesStaff: 1 });
 appointmentSchema.index({ customer: 1 });
 appointmentSchema.index({ status: 1 });
 appointmentSchema.index({ isDeleted: 1 });
+
+// Compound index for common query patterns
+appointmentSchema.index({ scheduledDate: 1, status: 1, assignedSalesStaff: 1 });
 
 // Virtual to check if appointment can be cancelled
 appointmentSchema.virtual('canBeCancelled').get(function () {

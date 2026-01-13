@@ -46,7 +46,9 @@ router.put(
 // Cancel appointment
 router.put(
   '/:id/cancel',
+  authorize(ROLES.APPOINTMENT_AGENT, ROLES.ADMIN, ROLES.CUSTOMER, ROLES.SALES_STAFF),
   validate(schemas.mongoId, 'params'),
+  validate(schemas.cancelAppointment),
   appointmentController.cancelAppointment
 );
 
@@ -64,6 +66,31 @@ router.put(
   authorize(ROLES.SALES_STAFF, ROLES.APPOINTMENT_AGENT, ROLES.ADMIN),
   validate(schemas.mongoId, 'params'),
   appointmentController.markNoShow
+);
+
+// Travel fee (ocular visits)
+router.put(
+  '/:id/travel-fee',
+  authorize(ROLES.CASHIER, ROLES.ADMIN),
+  validate(schemas.mongoId, 'params'),
+  validate(schemas.setTravelFee),
+  appointmentController.setTravelFee
+);
+
+router.put(
+  '/:id/travel-fee/collect',
+  authorize(ROLES.SALES_STAFF),
+  validate(schemas.mongoId, 'params'),
+  validate(schemas.collectTravelFee),
+  appointmentController.collectTravelFee
+);
+
+router.put(
+  '/:id/travel-fee/verify',
+  authorize(ROLES.CASHIER),
+  validate(schemas.mongoId, 'params'),
+  validate(schemas.verifyTravelFee),
+  appointmentController.verifyTravelFee
 );
 
 module.exports = router;

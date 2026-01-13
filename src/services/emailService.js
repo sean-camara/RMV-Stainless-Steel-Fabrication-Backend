@@ -146,6 +146,72 @@ class EmailService {
     });
   }
 
+  async sendAppointmentCancellation(email, details, customerName) {
+    const date = new Date(details.scheduledDate);
+    const formattedDate = date.toLocaleDateString('en-PH', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    const formattedTime = date.toLocaleTimeString('en-PH', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    const reason = details.reason || 'Appointment cancelled';
+    const message = details.message || 'Your appointment has been cancelled. You can book a new schedule anytime.';
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #e11d48; color: white; padding: 20px; text-align: center; }
+          .content { padding: 30px; background-color: #f9f9f9; }
+          .details { background-color: white; padding: 20px; margin: 20px 0; border-left: 4px solid #e11d48; }
+          .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+          .cta { background-color: #0f172a; color: white; padding: 12px 24px; text-decoration: none;
+                 display: inline-block; margin-top: 20px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Appointment Cancelled</h1>
+          </div>
+          <div class="content">
+            <p>Hello ${customerName || 'Customer'},</p>
+            <p>We’re letting you know that your appointment has been cancelled.</p>
+            <div class="details">
+              <p><strong>Date:</strong> ${formattedDate}</p>
+              <p><strong>Time:</strong> ${formattedTime}</p>
+              <p><strong>Type:</strong> ${details.appointmentType === 'ocular_visit' ? 'Ocular Visit' : 'Office Consultation'}</p>
+              <p><strong>Reason:</strong> ${reason}</p>
+            </div>
+            <p>${message}</p>
+            <p>If you’d like to reschedule, please pick a new time that works for you.</p>
+            <a href="${config.frontendUrl}/customer/appointments" class="cta">Book A New Appointment</a>
+          </div>
+          <div class="footer">
+            <p>RMV Stainless Steel Fabrication & Construction Services</p>
+            <p>Brgy. Mapulang Lupa, Valenzuela City</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    return this.sendEmail({
+      to: email,
+      subject: 'RMV Stainless Steel - Appointment Cancelled',
+      html,
+      text: `Your appointment on ${formattedDate} at ${formattedTime} has been cancelled. Reason: ${reason}. Message: ${message}`,
+    });
+  }
+
   async sendBlueprintReady(email, project, customerName) {
     const html = `
       <!DOCTYPE html>

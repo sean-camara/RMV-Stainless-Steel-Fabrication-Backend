@@ -1,8 +1,29 @@
 require('dotenv').config();
 
+// Environment variable validation
+const nodeEnv = process.env.NODE_ENV || 'development';
+const requiredEnvVars = ['JWT_SECRET', 'JWT_REFRESH_SECRET', 'MONGODB_URI'];
+
+if (nodeEnv === 'production') {
+  requiredEnvVars.forEach((varName) => {
+    if (!process.env[varName]) {
+      throw new Error(`Missing required environment variable: ${varName}. This is required in production.`);
+    }
+  });
+}
+
+// JWT secrets with strict production requirement
+const jwtSecret = process.env.JWT_SECRET || (nodeEnv === 'production'
+  ? (() => { throw new Error('JWT_SECRET is required in production'); })()
+  : 'development-secret-change-in-production');
+
+const jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || (nodeEnv === 'production'
+  ? (() => { throw new Error('JWT_REFRESH_SECRET is required in production'); })()
+  : 'development-refresh-secret-change-in-production');
+
 module.exports = {
   // Server
-  nodeEnv: process.env.NODE_ENV || 'development',
+  nodeEnv,
   port: parseInt(process.env.PORT, 10) || 5000,
 
   // MongoDB
@@ -10,8 +31,8 @@ module.exports = {
 
   // JWT
   jwt: {
-    secret: process.env.JWT_SECRET || 'default_jwt_secret_change_in_production',
-    refreshSecret: process.env.JWT_REFRESH_SECRET || 'default_refresh_secret_change_in_production',
+    secret: jwtSecret,
+    refreshSecret: jwtRefreshSecret,
     expiresIn: process.env.JWT_EXPIRES_IN || '1h',
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   },
@@ -32,6 +53,7 @@ module.exports = {
   upload: {
     maxSizeImage: parseInt(process.env.UPLOAD_MAX_SIZE_IMAGE, 10) || 10 * 1024 * 1024, // 10MB
     maxSizePdf: parseInt(process.env.UPLOAD_MAX_SIZE_PDF, 10) || 25 * 1024 * 1024, // 25MB
+    basePath: process.env.UPLOAD_BASE_PATH || 'uploads',
   },
 
   // Rate Limiting

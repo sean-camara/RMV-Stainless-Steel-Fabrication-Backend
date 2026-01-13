@@ -143,6 +143,27 @@ const schemas = {
     agentNotes: Joi.string().max(500),
   }),
 
+  cancelAppointment: Joi.object({
+    reason: Joi.string().max(500).allow('', null),
+    message: Joi.string().max(1200).allow('', null),
+  }),
+
+  // Travel fee (ocular) management
+  setTravelFee: Joi.object({
+    amount: Joi.number().positive().required(),
+    notes: Joi.string().max(500).allow('', null),
+    isRequired: Joi.boolean().default(true),
+  }),
+
+  collectTravelFee: Joi.object({
+    collectedAmount: Joi.number().positive().required(),
+    notes: Joi.string().max(500).allow('', null),
+  }),
+
+  verifyTravelFee: Joi.object({
+    notes: Joi.string().max(500).allow('', null),
+  }),
+
   // Project schemas
   createProject: Joi.object({
     customerId: Joi.string().hex().length(24).required(),
@@ -176,18 +197,26 @@ const schemas = {
     status: Joi.string().valid(
       'draft',
       'pending_blueprint',
+      'blueprint_pending',
       'blueprint_submitted',
+      'blueprint_uploaded',
       'pending_customer_approval',
+      'client_approved',
+      'client_rejected',
       'revision_requested',
       'approved',
       'pending_initial_payment',
+      'dp_pending',
       'initial_payment_verified',
       'in_fabrication',
       'pending_midpoint_payment',
       'midpoint_payment_verified',
+      'fabrication_done',
+      'ready_for_pickup',
       'ready_for_installation',
       'in_installation',
       'pending_final_payment',
+      'released',
       'completed',
       'cancelled',
       'on_hold'

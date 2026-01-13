@@ -622,6 +622,19 @@ const updateProjectStatus = asyncHandler(async (req, res) => {
   // Handle specific status transitions
   if (status === 'in_fabrication' && previousStatus !== 'in_fabrication') {
     project.fabrication.startedAt = new Date();
+    if (project.fabrication.progress === 0) {
+      project.fabrication.progress = 5;
+    }
+  }
+  if (status === 'fabrication_done' && previousStatus !== 'fabrication_done') {
+    project.fabrication.completedAt = new Date();
+    project.fabrication.progress = 100;
+  }
+  if (status === 'ready_for_pickup') {
+    if (!project.fabrication.completedAt) {
+      project.fabrication.completedAt = new Date();
+    }
+    project.fabrication.progress = Math.max(project.fabrication.progress || 0, 100);
   }
   if (status === 'ready_for_installation') {
     project.fabrication.completedAt = new Date();
@@ -634,11 +647,16 @@ const updateProjectStatus = asyncHandler(async (req, res) => {
     project.installation.completedAt = new Date();
     project.timeline.actualCompletion = new Date();
   }
+  if (status === 'released') {
+    project.fabrication.releasedAt = new Date();
+    project.fabrication.releasedBy = req.userId;
+    project.timeline.actualCompletion = project.timeline.actualCompletion || new Date();
+  }
 
   await project.save();
 
   // Send email notification for major status changes
-  const notifyStatuses = ['approved', 'in_fabrication', 'ready_for_installation', 'in_installation', 'completed'];
+  const notifyStatuses = ['approved', 'in_fabrication', 'fabrication_done', 'ready_for_pickup', 'ready_for_installation', 'in_installation', 'released', 'completed'];
   if (notifyStatuses.includes(status)) {
     await emailService.sendProjectStatusUpdate(
       project.customer.email,
@@ -731,6 +749,18 @@ const updateFabricationProgress = asyncHandler(async (req, res) => {
     });
   }
 
+  // Auto-mark completion when hitting 100%
+  if (progress >= 100 && project.status === 'in_fabrication') {
+    project.status = 'fabrication_done';
+    project.statusHistory.push({
+      status: 'fabrication_done',
+      changedBy: req.userId,
+      notes: notes || 'Fabrication completed',
+    });
+    project.fabrication.completedAt = new Date();
+    project.fabrication.progress = 100;
+  }
+
   await project.save();
 
   // Log activity
@@ -739,7 +769,7 @@ const updateFabricationProgress = asyncHandler(async (req, res) => {
     req.userRole,
     'fabrication_progress_updated',
     project._id,
-    `Progress updated to ${progress}%`
+    `Progress updated to ${project.fabrication.progress}%`
   );
 
   res.json({
@@ -748,6 +778,7 @@ const updateFabricationProgress = asyncHandler(async (req, res) => {
     data: { 
       progress: project.fabrication.progress,
       fabrication: project.fabrication,
+      status: project.status,
     },
   });
 });
@@ -825,7 +856,17 @@ const getPendingForEngineer = asyncHandler(async (req, res) => {
 const getFabricationProjects = asyncHandler(async (req, res) => {
   const projects = await Project.find({
     'assignedStaff.fabricationStaff': req.userId,
-    status: { $in: ['in_fabrication', 'pending_midpoint_payment', 'midpoint_payment_verified'] },
+    status: {
+      $in: [
+        'dp_pending',
+        'pending_initial_payment',
+        'pending_midpoint_payment',
+        'midpoint_payment_verified',
+        'in_fabrication',
+        'fabrication_done',
+        'ready_for_pickup',
+      ],
+    },
   })
     .populate('customer', 'profile.firstName profile.lastName')
     .sort({ 'fabrication.startedAt': 1 });

@@ -29,6 +29,33 @@ const createAppointment = asyncHandler(async (req, res) => {
     );
   }
 
+  // Attempt auto-assignment for ocular visits to avoid double-booking
+  let autoAssignedSalesStaff = null;
+  if (appointmentType === 'ocular_visit') {
+    const salesStaffList = await User.find({
+      role: config.roles.SALES_STAFF,
+      isActive: true,
+    }).select('_id profile.firstName profile.lastName');
+
+    if (salesStaffList.length > 0) {
+      // Find first staff without a conflicting appointment at the same slot
+      for (const staff of salesStaffList) {
+        const conflict = await Appointment.findOne({
+          assignedSalesStaff: staff._id,
+          scheduledDate: date,
+          status: { $nin: ['cancelled', 'no_show'] },
+        }).lean();
+
+        if (!conflict) {
+          autoAssignedSalesStaff = staff;
+          break;
+        }
+      }
+    }
+  }
+
+  const initialStatus = autoAssignedSalesStaff ? 'scheduled' : 'pending';
+
   // Create appointment
   const appointment = await Appointment.create({
     customer: req.userId,
@@ -37,15 +64,20 @@ const createAppointment = asyncHandler(async (req, res) => {
     interestedCategory,
     description,
     siteAddress: appointmentType === 'ocular_visit' ? siteAddress : undefined,
+    assignedSalesStaff: autoAssignedSalesStaff ? autoAssignedSalesStaff._id : undefined,
     notes: {
       customerNotes: notes,
     },
-    status: 'pending',
+    status: initialStatus,
     statusHistory: [{
       status: 'pending',
       changedBy: req.userId,
       notes: 'Appointment booked by customer',
-    }],
+    }].concat(autoAssignedSalesStaff ? [{
+      status: 'scheduled',
+      changedBy: req.userId,
+      notes: `Auto-assigned to ${autoAssignedSalesStaff.profile.firstName} ${autoAssignedSalesStaff.profile.lastName}`,
+    }] : []),
   });
 
   // Log activity
@@ -275,59 +307,74 @@ const getAvailableSlots = asyncHandler(async (req, res) => {
  * @access  Private
  */
 const cancelAppointment = asyncHandler(async (req, res) => {
-  const { reason } = req.body;
+  const { reason, message } = req.body;
 
   const appointment = await Appointment.findById(req.params.id)
-    .populate('customer', 'email profile.firstName profile.lastName');
+    .populate('customer', 'email profile.firstName profile.lastName email')
+    .populate('assignedSalesStaff', 'profile.firstName profile.lastName');
 
   if (!appointment) {
     throw new AppError('Appointment not found', 404);
   }
 
-  // Check access
+  // Check access for customers (agents/admins already authorized via route)
   if (req.userRole === config.roles.CUSTOMER && 
       appointment.customer._id.toString() !== req.userId.toString()) {
     throw new AppError('Access denied', 403);
   }
 
   if (['cancelled', 'completed', 'no_show'].includes(appointment.status)) {
-    throw new AppError('Appointment cannot be cancelled', 400);
+    throw new AppError('Appointment cannot be cancelled once completed or marked as no-show', 400);
   }
 
-  // Check if within cancellation policy (24 hours)
   const now = new Date();
   const cutoffTime = new Date(appointment.scheduledDate);
   cutoffTime.setHours(cutoffTime.getHours() - config.business.cancellationCutoffHours);
   const isWithinPolicy = now < cutoffTime;
 
+  const cancellationReason = reason?.trim() || 'Appointment cancelled';
+  const customerMessage = (message || '').trim() || 'Your appointment has been cancelled. Please book a new time that works for you.';
+  const customerName = `${appointment.customer.profile.firstName} ${appointment.customer.profile.lastName}`.trim();
+
   appointment.status = 'cancelled';
   appointment.cancellation = {
     cancelledBy: req.userId,
     cancelledAt: now,
-    reason,
+    reason: cancellationReason,
     isWithinPolicy,
   };
   appointment.statusHistory.push({
     status: 'cancelled',
     changedBy: req.userId,
-    notes: reason || 'Appointment cancelled',
+    notes: cancellationReason,
   });
 
   await appointment.save();
 
-  // Log activity
+  // Notify customer the appointment is cancelled but keep history intact
+  await emailService.sendAppointmentCancellation(
+    appointment.customer.email,
+    {
+      scheduledDate: appointment.scheduledDate,
+      appointmentType: appointment.appointmentType,
+      reason: cancellationReason,
+      message: customerMessage,
+    },
+    customerName
+  );
+
   await activityService.logAppointment(
     req.userId,
     req.userRole,
     'appointment_cancelled',
     appointment._id,
-    `Cancelled ${isWithinPolicy ? 'within' : 'outside'} policy`
+    `${cancellationReason}${isWithinPolicy ? '' : ' (within 24h window)'}`
   );
 
   res.json({
     success: true,
-    message: isWithinPolicy 
-      ? 'Appointment cancelled successfully' 
+    message: isWithinPolicy
+      ? 'Appointment cancelled successfully'
       : 'Appointment cancelled. Note: Cancellation was made less than 24 hours before the scheduled time.',
     data: { appointment },
   });
@@ -417,6 +464,132 @@ const markNoShow = asyncHandler(async (req, res) => {
 });
 
 /**
+ * @desc    Set travel fee for ocular visit (cashier/admin)
+ * @route   PUT /api/appointments/:id/travel-fee
+ * @access  Private/Cashier, Admin
+ */
+const setTravelFee = asyncHandler(async (req, res) => {
+  const { amount, notes, isRequired = true } = req.body;
+
+  const appointment = await Appointment.findById(req.params.id);
+  if (!appointment) {
+    throw new AppError('Appointment not found', 404);
+  }
+
+  if (appointment.appointmentType !== 'ocular_visit') {
+    throw new AppError('Travel fee only applies to ocular visits', 400);
+  }
+
+  appointment.travelFee = {
+    isRequired,
+    amount: isRequired ? amount : 0,
+    status: isRequired ? 'pending' : 'not_required',
+    notes,
+  };
+
+  appointment.statusHistory.push({
+    status: appointment.status,
+    changedBy: req.userId,
+    notes: isRequired ? `Travel fee set: ₱${amount}` : 'Travel fee marked not required',
+  });
+
+  await appointment.save();
+
+  res.json({
+    success: true,
+    message: 'Travel fee updated',
+    data: { travelFee: appointment.travelFee },
+  });
+});
+
+/**
+ * @desc    Record travel fee collected on-site (sales staff)
+ * @route   PUT /api/appointments/:id/travel-fee/collect
+ * @access  Private/Sales Staff
+ */
+const collectTravelFee = asyncHandler(async (req, res) => {
+  const { collectedAmount, notes } = req.body;
+
+  const appointment = await Appointment.findById(req.params.id);
+  if (!appointment) {
+    throw new AppError('Appointment not found', 404);
+  }
+
+  if (appointment.appointmentType !== 'ocular_visit') {
+    throw new AppError('Travel fee only applies to ocular visits', 400);
+  }
+
+  if (!appointment.travelFee?.isRequired || appointment.travelFee.status === 'not_required') {
+    throw new AppError('Travel fee is not required for this appointment', 400);
+  }
+
+  if (appointment.travelFee.status !== 'pending') {
+    throw new AppError('Travel fee is not pending collection', 400);
+  }
+
+  appointment.travelFee.status = 'collected';
+  appointment.travelFee.collectedBy = req.userId;
+  appointment.travelFee.collectedAt = new Date();
+  appointment.travelFee.amount = collectedAmount;
+  appointment.travelFee.notes = notes;
+
+  appointment.statusHistory.push({
+    status: appointment.status,
+    changedBy: req.userId,
+    notes: `Travel fee collected: ₱${collectedAmount}`,
+  });
+
+  await appointment.save();
+
+  res.json({
+    success: true,
+    message: 'Travel fee marked as collected',
+    data: { travelFee: appointment.travelFee },
+  });
+});
+
+/**
+ * @desc    Verify collected travel fee (cashier)
+ * @route   PUT /api/appointments/:id/travel-fee/verify
+ * @access  Private/Cashier
+ */
+const verifyTravelFee = asyncHandler(async (req, res) => {
+  const { notes } = req.body;
+
+  const appointment = await Appointment.findById(req.params.id);
+  if (!appointment) {
+    throw new AppError('Appointment not found', 404);
+  }
+
+  if (!appointment.travelFee?.isRequired || appointment.travelFee.status === 'not_required') {
+    throw new AppError('Travel fee is not required for this appointment', 400);
+  }
+
+  if (appointment.travelFee.status !== 'collected') {
+    throw new AppError('Travel fee is not pending verification', 400);
+  }
+
+  appointment.travelFee.status = 'verified';
+  appointment.travelFee.verifiedBy = req.userId;
+  appointment.travelFee.verifiedAt = new Date();
+  appointment.travelFee.notes = notes;
+
+  appointment.statusHistory.push({
+    status: appointment.status,
+    changedBy: req.userId,
+    notes: 'Travel fee verified',
+  });
+
+  await appointment.save();
+
+  res.json({
+    success: true,
+    message: 'Travel fee verified',
+    data: { travelFee: appointment.travelFee },
+  });
+});
+
+/**
  * @desc    Get calendar view for appointment agent
  * @route   GET /api/appointments/calendar
  * @access  Private/Appointment Agent, Admin
@@ -476,5 +649,8 @@ module.exports = {
   cancelAppointment,
   completeAppointment,
   markNoShow,
+  setTravelFee,
+  collectTravelFee,
+  verifyTravelFee,
   getCalendarView,
 };

@@ -75,18 +75,26 @@ const projectSchema = new mongoose.Schema(
       enum: [
         'draft',                    // Sales staff creating project
         'pending_blueprint',        // Waiting for engineer
+        'blueprint_pending',        // Alias for waiting on blueprint
         'blueprint_submitted',      // Engineer submitted blueprint
+        'blueprint_uploaded',       // Blueprint uploaded
         'pending_customer_approval',// Waiting for customer approval
         'revision_requested',       // Customer requested changes
+        'client_approved',          // Customer approved (alias)
+        'client_rejected',          // Customer rejected (alias)
         'approved',                 // Customer approved
         'pending_initial_payment',  // Waiting for 30% payment
+        'dp_pending',               // Alias for initial payment pending
         'initial_payment_verified', // Cashier verified 30%
         'in_fabrication',           // Being fabricated
         'pending_midpoint_payment', // Waiting for 40% payment
         'midpoint_payment_verified',// Cashier verified 40%
-        'ready_for_installation',   // Fabrication complete
+        'fabrication_done',         // Fabrication complete
+        'ready_for_pickup',         // Ready for pickup/release
+        'ready_for_installation',   // Fabrication complete (install path)
         'in_installation',          // Being installed
         'pending_final_payment',    // Waiting for final 30%
+        'released',                 // Released to customer
         'completed',                // Fully paid and done
         'cancelled',                // Project cancelled
         'on_hold',                  // Temporarily paused
@@ -247,6 +255,11 @@ const projectSchema = new mongoose.Schema(
     fabrication: {
       startedAt: Date,
       completedAt: Date,
+      releasedAt: Date,
+      releasedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
       progress: {
         type: Number,
         min: 0,
@@ -341,6 +354,11 @@ projectSchema.index({ 'assignedStaff.engineer': 1 });
 projectSchema.index({ 'assignedStaff.fabricationStaff': 1 });
 projectSchema.index({ isDeleted: 1 });
 projectSchema.index({ createdAt: -1 });
+
+// Compound indexes for common query patterns
+projectSchema.index({ customer: 1, status: 1, createdAt: -1 });
+projectSchema.index({ 'assignedStaff.salesStaff': 1, status: 1 });
+projectSchema.index({ 'assignedStaff.engineer': 1, status: 1 });
 
 // Virtual for total paid amount
 projectSchema.virtual('totalPaidAmount').get(function () {

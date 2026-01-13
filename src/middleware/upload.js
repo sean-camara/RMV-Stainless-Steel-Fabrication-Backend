@@ -1,12 +1,22 @@
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const config = require('../config');
+
+// Ensure upload directory exists before writing
+const ensureDir = (dirPath) => {
+  const absolute = path.isAbsolute(dirPath) ? dirPath : path.join(process.cwd(), dirPath);
+  if (!fs.existsSync(absolute)) {
+    fs.mkdirSync(absolute, { recursive: true });
+  }
+  return absolute;
+};
 
 // Storage configuration
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    let uploadPath = 'uploads/';
+    let uploadPath = `${config.upload.basePath}/`;
 
     // Determine subfolder based on field name
     switch (file.fieldname) {
@@ -31,6 +41,7 @@ const storage = multer.diskStorage({
         uploadPath += 'misc/';
     }
 
+    ensureDir(uploadPath);
     cb(null, uploadPath);
   },
   filename: (req, file, cb) => {

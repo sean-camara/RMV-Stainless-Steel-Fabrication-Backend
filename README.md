@@ -115,80 +115,99 @@ backend/
 └── package.json
 ```
 
+
 ## 🚀 Getting Started
 
-### Prerequisites
+### Prerequisites / First-time Setup
 
-- Node.js 18+ installed
-- MongoDB 6+ (local or Atlas)
-- npm or yarn package manager
-- Git
+- **Node.js 18+** (LTS recommended)
+- **MongoDB**: Use **MongoDB Atlas** (recommended) or local MongoDB 6+
+- **npm** (or yarn)
+- **Git**
 
-### Installation
+### 1. Clone the repository
+```bash
+git clone https://github.com/sean-camara/RMV-Stainless-Steel-Fabrication-Backend.git
+cd RMV-Stainless-Steel-Fabrication-Backend
+```
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/RMV-Stainless-Steel-Fabrication-Backend.git
-   cd RMV-Stainless-Steel-Fabrication-Backend
-   ```
+### 2. Install dependencies
+```bash
+npm install
+```
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+### 3. Environment Setup
 
-3. **Environment Setup**
-   
-   Create a `.env` file in the root directory:
-   ```env
-   # Server
-   PORT=5000
-   NODE_ENV=development
+- Copy `.env.example` to `.env` and fill in the required values:
 
-   # MongoDB
-   MONGODB_URI=mongodb://localhost:27017/rmv_fabrication
+  - **MONGODB_URI** (required): Your MongoDB Atlas connection string (see below)
+  - **JWT_SECRET** and **JWT_REFRESH_SECRET** (required): Set strong secrets
+  - **SMTP_***: For email sending (Gmail SMTP supported)
 
-   # JWT
-   JWT_SECRET=your-super-secret-jwt-key-change-in-production
-   JWT_EXPIRES_IN=7d
+**Minimal example:**
+```env
+PORT=5000
+MONGODB_URI=mongodb+srv://<user>:<pass>@cluster0.mongodb.net/rmv?retryWrites=true&w=majority
+JWT_SECRET=your-super-secret-jwt-key
+JWT_REFRESH_SECRET=your-super-secret-refresh-key
+```
 
-   # Email (using Gmail example)
-   EMAIL_HOST=smtp.gmail.com
-   EMAIL_PORT=587
-   EMAIL_USER=your-email@gmail.com
-   EMAIL_PASS=your-app-password
-   EMAIL_FROM=RMV Steel <noreply@rmvsteel.com>
+> **Note:**
+> - The backend will **fail to start** if `MONGODB_URI` is missing or invalid.
+> - If you use a different variable name (like `MONGO_URI`), it will be ignored.
+> - Local MongoDB is optional; Atlas is recommended for most users.
 
-   # Frontend URL (for email links)
-   FRONTEND_URL=http://localhost:5173
-   ```
+### 4. Start MongoDB
 
-4. **Start MongoDB**
-   
-   If using local MongoDB:
-   ```bash
-   mongod
-   ```
-   
-   Or use MongoDB Atlas connection string in `.env`
+- **Atlas:** No action needed (cloud-hosted)
+- **Local:**
+  ```bash
+  mongod
+  ```
 
-5. **Seed the database (optional)**
-   ```bash
-   npm run seed
-   ```
-   
-   This creates a default admin user:
-   - Email: `admin@rmvsteel.com`
-   - Password: `Admin123!`
+### 5. Seed the database (optional)
+```bash
+npm run seed
+```
+Creates a default admin user:
+- Email: `admin@rmvsteel.com`
+- Password: `Admin123!`
 
-6. **Start the development server**
-   ```bash
-   npm run dev
-   ```
+### 6. Start the development server
+```bash
+npm run dev
+```
 
-7. **Server will run on**
-   
-   `http://localhost:5000`
+> **Windows users:**
+> - **Do NOT double-click `server.js`** (this triggers a Windows Script Host error)
+> - **Always start the backend using `npm run dev`**
+
+### 7. Server will run on
+`http://localhost:5000`
+
+---
+
+### MongoDB Atlas Setup
+
+1. Go to [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) and create a free cluster.
+2. Create a database user and password.
+3. Whitelist your IP address.
+4. Copy the connection string and set it as `MONGODB_URI` in your `.env` file.
+
+---
+
+### Configuration Flow
+
+```
+server.js
+  → config/database.js
+   → config/index.js
+    → .env
+```
+
+All environment variables are loaded from `.env` via `config/index.js`. MongoDB connection is managed in `config/database.js`.
+
+If `MONGODB_URI` is missing, the backend will **not** fall back to localhost and will fail fast with an error.
 
 ### Production Deployment
 

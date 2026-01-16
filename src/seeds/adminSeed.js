@@ -11,8 +11,8 @@ const config = require('../config');
 const { User } = require('../models');
 
 const adminData = {
-  email: 'RMVadmin@gmail.com',
-  password: 'RMVadminPassword13',
+  email: 'admin@rmvsteel.com',
+  password: 'Admin123!',
   role: 'admin',
   profile: {
     firstName: 'RMV',
